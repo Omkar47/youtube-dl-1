@@ -1,10 +1,10 @@
 from __future__ import unicode_literals
-
+ 
 import itertools
 import hashlib
 import json
 import re
-
+ 
 from .common import InfoExtractor
 from ..compat import (
     compat_str,
@@ -19,10 +19,10 @@ from ..utils import (
     try_get,
     url_or_none,
 )
-
-
+ 
+ 
 class InstagramIE(InfoExtractor):
-    _VALID_URL = r'(?P<url>https?://(?:www\.)?instagram\.com/(?:p|tv)/(?P<id>[^/?#&]+))'
+    _VALID_URL = r'(?P<url>https?://(?:www\.)?instagram\.com/(?:p|tv|reel)/(?P<id>[^/?#&]+))'
     _TESTS = [{
         'url': 'https://instagram.com/p/aye83DjauH/?foo=bar#abc',
         'md5': '0d2da106a9d2631273e192b372806516',
@@ -35,7 +35,7 @@ class InstagramIE(InfoExtractor):
             'timestamp': 1371748545,
             'upload_date': '20130620',
             'uploader_id': 'naomipq',
-            'uploader': 'Naomi Leonor Phan-Quang',
+            'uploader': 'B E A U T Y  F O R  A S H E S',
             'like_count': int,
             'comment_count': int,
             'comments': list,
@@ -87,6 +87,19 @@ class InstagramIE(InfoExtractor):
             'description': 'md5:0f9203fc6a2ce4d228da5754bcf54957',
         },
     }, {
+        # reels
+        'url': 'https://www.instagram.com/reel/CDg_6Y1pxWu/',
+        'info_dict': {
+            'id': 'CDg_6Y1pxWu',
+            'ext': 'mp4',
+            'title': 'Video by mileycyrus',
+            'thumbnail': r're:^https?://.*\.jpg',
+            'timestamp': 1596647638,
+            'upload_date': '20200805',
+            'uploader_id': 'mileycyrus',
+            'uploader': 'Miley Cyrus',
+        },
+    }, {
         'url': 'https://instagram.com/p/-Cmh1cukG2/',
         'only_matching': True,
     }, {
@@ -96,7 +109,7 @@ class InstagramIE(InfoExtractor):
         'url': 'https://www.instagram.com/tv/aye83DjauH/',
         'only_matching': True,
     }]
-
+ 
     @staticmethod
     def _extract_embed_url(webpage):
         mobj = re.search(
@@ -104,28 +117,28 @@ class InstagramIE(InfoExtractor):
             webpage)
         if mobj:
             return mobj.group('url')
-
+ 
         blockquote_el = get_element_by_attribute(
             'class', 'instagram-media', webpage)
         if blockquote_el is None:
             return
-
+ 
         mobj = re.search(
             r'<a[^>]+href=([\'"])(?P<link>[^\'"]+)\1', blockquote_el)
         if mobj:
             return mobj.group('link')
-
+ 
     def _real_extract(self, url):
         mobj = re.match(self._VALID_URL, url)
         video_id = mobj.group('id')
         url = mobj.group('url')
-
+ 
         webpage = self._download_webpage(url, video_id)
-
+ 
         (video_url, description, thumbnail, timestamp, uploader,
          uploader_id, like_count, comment_count, comments, height,
          width) = [None] * 11
-
+ 
         shared_data = self._parse_json(
             self._search_regex(
                 r'window\._sharedData\s*=\s*({.+?});',
@@ -148,14 +161,14 @@ class InstagramIE(InfoExtractor):
                 timestamp = int_or_none(media.get('taken_at_timestamp') or media.get('date'))
                 uploader = media.get('owner', {}).get('full_name')
                 uploader_id = media.get('owner', {}).get('username')
-
+ 
                 def get_count(key, kind):
                     return int_or_none(try_get(
                         media, (lambda x: x['edge_media_%s' % key]['count'],
                                 lambda x: x['%ss' % kind]['count'])))
                 like_count = get_count('preview_like', 'like')
                 comment_count = get_count('to_comment', 'comment')
-
+ 
                 comments = [{
                     'author': comment.get('user', {}).get('username'),
                     'author_id': comment.get('user', {}).get('id'),
@@ -190,30 +203,30 @@ class InstagramIE(InfoExtractor):
                             entries, video_id,
                             'Post by %s' % uploader_id if uploader_id else None,
                             description)
-
+ 
         if not video_url:
             video_url = self._og_search_video_url(webpage, secure=False)
-
+ 
         formats = [{
             'url': video_url,
             'width': width,
             'height': height,
         }]
-
+ 
         if not uploader_id:
             uploader_id = self._search_regex(
                 r'"owner"\s*:\s*{\s*"username"\s*:\s*"(.+?)"',
                 webpage, 'uploader id', fatal=False)
-
+ 
         if not description:
             description = self._search_regex(
                 r'"caption"\s*:\s*"(.+?)"', webpage, 'description', default=None)
             if description is not None:
                 description = lowercase_escape(description)
-
+ 
         if not thumbnail:
             thumbnail = self._og_search_thumbnail(webpage)
-
+ 
         return {
             'id': video_id,
             'formats': formats,
@@ -228,31 +241,31 @@ class InstagramIE(InfoExtractor):
             'comment_count': comment_count,
             'comments': comments,
         }
-
-
+ 
+ 
 class InstagramPlaylistIE(InfoExtractor):
     # A superclass for handling any kind of query based on GraphQL which
     # results in a playlist.
-
+ 
     _gis_tmpl = None  # used to cache GIS request type
-
+ 
     def _parse_graphql(self, webpage, item_id):
         # Reads a webpage and returns its GraphQL data.
         return self._parse_json(
             self._search_regex(
                 r'sharedData\s*=\s*({.+?})\s*;\s*[<\n]', webpage, 'data'),
             item_id)
-
+ 
     def _extract_graphql(self, data, url):
         # Parses GraphQL queries containing videos and generates a playlist.
         def get_count(suffix):
             return int_or_none(try_get(
                 node, lambda x: x['edge_media_' + suffix]['count']))
-
+ 
         uploader_id = self._match_id(url)
         csrf_token = data['config']['csrf_token']
         rhx_gis = data.get('rhx_gis') or '3c7ca9dcefcf966d11dacf1f151335e8'
-
+ 
         cursor = ''
         for page_num in itertools.count(1):
             variables = {
@@ -261,7 +274,7 @@ class InstagramPlaylistIE(InfoExtractor):
             }
             variables.update(self._query_vars_for(data))
             variables = json.dumps(variables)
-
+ 
             if self._gis_tmpl:
                 gis_tmpls = [self._gis_tmpl]
             else:
@@ -271,7 +284,7 @@ class InstagramPlaylistIE(InfoExtractor):
                     '%s:%s' % (rhx_gis, csrf_token),
                     '%s:%s:%s' % (rhx_gis, csrf_token, std_headers['User-Agent']),
                 ]
-
+ 
             # try all of the ways to generate a GIS query, and not only use the
             # first one that works, but cache it for future requests
             for gis_tmpl in gis_tmpls:
@@ -296,11 +309,11 @@ class InstagramPlaylistIE(InfoExtractor):
                         if gis_tmpl != gis_tmpls[-1]:
                             continue
                     raise
-
+ 
             edges = media.get('edges')
             if not edges or not isinstance(edges, list):
                 break
-
+ 
             for edge in edges:
                 node = edge.get('node')
                 if not node or not isinstance(node, dict):
@@ -310,21 +323,21 @@ class InstagramPlaylistIE(InfoExtractor):
                 video_id = node.get('shortcode')
                 if not video_id:
                     continue
-
+ 
                 info = self.url_result(
                     'https://instagram.com/p/%s/' % video_id,
                     ie=InstagramIE.ie_key(), video_id=video_id)
-
+ 
                 description = try_get(
                     node, lambda x: x['edge_media_to_caption']['edges'][0]['node']['text'],
                     compat_str)
                 thumbnail = node.get('thumbnail_src') or node.get('display_src')
                 timestamp = int_or_none(node.get('taken_at_timestamp'))
-
+ 
                 comment_count = get_count('to_comment')
                 like_count = get_count('preview_like')
                 view_count = int_or_none(node.get('video_view_count'))
-
+ 
                 info.update({
                     'description': description,
                     'thumbnail': thumbnail,
@@ -333,32 +346,32 @@ class InstagramPlaylistIE(InfoExtractor):
                     'like_count': like_count,
                     'view_count': view_count,
                 })
-
+ 
                 yield info
-
+ 
             page_info = media.get('page_info')
             if not page_info or not isinstance(page_info, dict):
                 break
-
+ 
             has_next_page = page_info.get('has_next_page')
             if not has_next_page:
                 break
-
+ 
             cursor = page_info.get('end_cursor')
             if not cursor or not isinstance(cursor, compat_str):
                 break
-
+ 
     def _real_extract(self, url):
         user_or_tag = self._match_id(url)
         webpage = self._download_webpage(url, user_or_tag)
         data = self._parse_graphql(webpage, user_or_tag)
-
+ 
         self._set_cookie('instagram.com', 'ig_pr', '1')
-
+ 
         return self.playlist_result(
             self._extract_graphql(data, url), user_or_tag, user_or_tag)
-
-
+ 
+ 
 class InstagramUserIE(InstagramPlaylistIE):
     _VALID_URL = r'https?://(?:www\.)?instagram\.com/(?P<id>[^/]{2,})/?(?:$|[?#])'
     IE_DESC = 'Instagram user profile'
@@ -376,14 +389,14 @@ class InstagramUserIE(InstagramPlaylistIE):
             'playlistend': 5,
         }
     }
-
+ 
     _QUERY_HASH = '42323d64886122307be10013ad2dcc44',
-
+ 
     @staticmethod
     def _parse_timeline_from(data):
         # extracts the media timeline data from a GraphQL result
         return data['data']['user']['edge_owner_to_timeline_media']
-
+ 
     @staticmethod
     def _query_vars_for(data):
         # returns a dictionary of variables to add to the timeline query based
@@ -391,8 +404,8 @@ class InstagramUserIE(InstagramPlaylistIE):
         return {
             'id': data['entry_data']['ProfilePage'][0]['graphql']['user']['id']
         }
-
-
+ 
+ 
 class InstagramTagIE(InstagramPlaylistIE):
     _VALID_URL = r'https?://(?:www\.)?instagram\.com/explore/tags/(?P<id>[^/]+)'
     IE_DESC = 'Instagram hashtag search'
@@ -410,14 +423,14 @@ class InstagramTagIE(InstagramPlaylistIE):
             'playlistend': 50,
         }
     }
-
+ 
     _QUERY_HASH = 'f92f56d47dc7a55b606908374b43a314',
-
+ 
     @staticmethod
     def _parse_timeline_from(data):
         # extracts the media timeline data from a GraphQL result
         return data['data']['hashtag']['edge_hashtag_to_media']
-
+ 
     @staticmethod
     def _query_vars_for(data):
         # returns a dictionary of variables to add to the timeline query based
@@ -426,3 +439,4 @@ class InstagramTagIE(InstagramPlaylistIE):
             'tag_name':
                 data['entry_data']['TagPage'][0]['graphql']['hashtag']['name']
         }
+ 
